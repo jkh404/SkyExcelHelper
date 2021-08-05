@@ -2,17 +2,20 @@ using NUnit.Framework;
 
 namespace SkyExcelHelperNTest
 {
-    public class Tests
+    public class ExSheetTest
     {
         [SetUp]
         public void Setup()
         {
+
         }
 
         [Test]
         public void Test1()
         {
-            Assert.Pass();
+            
+            //Assert.
+            //Assert.Pass();
         }
     }
 }

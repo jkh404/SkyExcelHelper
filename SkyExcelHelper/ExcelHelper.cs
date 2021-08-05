@@ -16,13 +16,15 @@ namespace SkyExcelHelper
         //public XSSFWorkbook workbook { get => wb; }
         public static ExWorkbook CreateWorkBook(string WorkBookName)
         {
+
             AutoPro autoPro = new AutoPro();
-            autoPro.Add("WorkBook",new XSSFWorkbook(workbookType:XSSFWorkbookType.XLSX));
+            autoPro.Add("NPOIWorkBook", new XSSFWorkbook(workbookType:XSSFWorkbookType.XLSX));
             WorkBookName = WorkBookName == null || WorkBookName.Length == 0 ? "工作簿1" : WorkBookName;
             autoPro.Add<ExWorkbook>(WorkBookName);
             return autoPro.Get<ExWorkbook>(WorkBookName);
 
         }
+
 
     }
 }

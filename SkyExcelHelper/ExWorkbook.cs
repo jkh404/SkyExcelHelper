@@ -4,6 +4,8 @@ using SkyAutoPro;
 using SkyExcelHelper.Attributes;
 using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -15,7 +17,7 @@ namespace SkyExcelHelper
     {
         [InTag]
         public string Name { get;private set; }
-        [InTag("WorkBook")]
+        [InTag("NPOIWorkBook")]
         private XSSFWorkbook wb { get; set; }
         private List<object> Sheets { get; set; }
         private List<string> SheetNames { get; set; }
@@ -28,28 +30,16 @@ namespace SkyExcelHelper
         public  ExSheet<T> CreateSheet<T>(string sheetName = null)
         {
             ExSheet<T> exSheet = null;
-            List<string> colTitle = new List<string>();
+            
             AutoPro autoPro = new AutoPro();
             autoPro.Add("ExWorkbook", this);
             ExTableAttribute exTable
                 = (ExTableAttribute)typeof(T)
                 .GetCustomAttributes(true).ToList()
                 .Find(m => m.GetType() == typeof(ExTableAttribute));
-            List<PropertyInfo> properties = typeof(T).GetProperties().ToList();
-            int KeyIndex = 0;
-            properties.ForEach(p => {
-                
-                ExColAttribute exCol = p.GetCustomAttribute<ExColAttribute>();
-                ExPrimaryKeyAttribute key = p.GetCustomAttribute<ExPrimaryKeyAttribute>();
-                if (exCol == null)
-                {
-                    colTitle.Add(p.Name);
-                }
-                else
-                {
-                    colTitle.Add(exCol.Name);
-                }
-                if (key!=null)
+
+            List<string> colTitle = ExSheet<T>.GetColTitle<T>((key, KeyIndex) => {
+                if (key != null)
                 {
                     autoPro.Add("autoPro", KeyIndex);
                     if (key.AutoNumber)
@@ -61,7 +51,6 @@ namespace SkyExcelHelper
                         autoPro.Add("是否启用自增主键", false);
                     }
                 }
-                KeyIndex++;
             });
             autoPro.Add("列标题集", colTitle);
             string sheetname = null;
@@ -91,10 +80,6 @@ namespace SkyExcelHelper
             ISheet NPOISheet = wb.CreateSheet(sheetname);
             autoPro.Add("NPOISheet", NPOISheet);
             autoPro.Add("NPOIWorkBook", wb);
-            //properties.Select(u=>u.GetCustomAttribute<ExPrimaryKeyAttribute>(true))
-            
-
-
             autoPro.Add<ExSheet<T>>(sheetname);
             exSheet = (ExSheet<T>)autoPro.Get(sheetname);
             Sheets.Add(exSheet);
@@ -132,6 +117,32 @@ namespace SkyExcelHelper
         }
         public XSSFWorkbook ToXSSFWorkbook => wb;
 
+        public ExSheet<T> FromDB<T>(string connectionString,Func<SqlCommand, SqlCommand> CallBack)
+        {
+            ExSheet<T> exSheet = null;
+            SqlConnection connection = new SqlConnection(connectionString);
+            if (connection.State == ConnectionState.Closed)
+            {
+                connection.Open();
+            }
+
+            SqlDataAdapter dataAdapter = new SqlDataAdapter();
+            dataAdapter.SelectCommand = CallBack(connection.CreateCommand());
+            DataSet dataSet = new DataSet();
+            dataAdapter.MissingSchemaAction = MissingSchemaAction.AddWithKey;
+            dataAdapter.Fill(dataSet);
+            if (dataSet.Tables.Count>0)
+            {
+                DataTable dataTable = dataSet.Tables[0];
+                exSheet=dataTable.ToExSheet<T>(Name);
+            }
+            connection.Close();
+            connection.Dispose();
+            dataAdapter.Dispose();
+            dataSet.Dispose();
+
+            return exSheet;
+        }
         public void SaveToFile(string fileName = null)
         {
             if (fileName == null)
@@ -150,6 +161,8 @@ namespace SkyExcelHelper
         {
             wb.Write(stream);
         }
+
     }
+
 
 }

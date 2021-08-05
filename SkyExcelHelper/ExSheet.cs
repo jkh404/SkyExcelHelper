@@ -2,6 +2,7 @@
 using NPOI.SS.Util;
 using NPOI.XSSF.UserModel;
 using SkyAutoPro;
+using SkyExcelHelper.Attributes;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -32,7 +33,7 @@ namespace SkyExcelHelper
         [InTag("是否启用自增主键")]
         public bool IsUseAutoKey { get;private set; }
         [InTag("主键所在位置")]
-        private int KeyIndex { get; set; } = -1;
+        public int KeyIndex { get;private set; } = -1;
 
         private List<T> RowDataEx { get; set; }
         public int RowCount { get => RowDataEx.Count(); }
@@ -48,24 +49,28 @@ namespace SkyExcelHelper
 
         public ExSheet<T> Add(T obj)
         {
-            if (KeyIndex!=-1)
+            lock (RowDataEx)
             {
-                if (IsUseAutoKey)
+                if (KeyIndex != -1)
                 {
-                    SetColValue(obj, KeyIndex, AutoID++);
+                    if (IsUseAutoKey)
+                    {
+                        SetColValue(obj, KeyIndex, AutoID++);
+                    }
+                    object key = GetColValue(obj, KeyIndex);
+                    if (!Keys.Contains(key))
+                    {
+                        Keys.Add(key);
+                    }
+                    else
+                    {
+                        throw new Exception("The primary key recurs!");
+                    }
                 }
-                object key = GetColValue(obj, KeyIndex);
-                if (!Keys.Contains(key))
-                {
-                    Keys.Add(key);
-                }
-                else
-                {
-                    throw new Exception("The primary key recurs!");
-                }
+                RowDataEx.Add(obj);
+                return this;
             }
-            RowDataEx.Add(obj);
-            return this;
+
         }
         public ExSheet<T> AddRang(List<T> objs)
         {
@@ -87,10 +92,19 @@ namespace SkyExcelHelper
         {
             ConstructorInfo constructor= typeof(T).GetConstructors().Where(c=>c.GetParameters().Count()==0).First();
             T obj = (T)(constructor?.Invoke(null));
-            int index = 0;
-            obj.GetType().GetProperties().ToList().ForEach((p)=> {
-                p.GetSetMethod()?.Invoke(obj,new object[] { array[index++] });
-            });
+            List<PropertyInfo> properties = obj.GetType().GetProperties().ToList();
+            for (int i = 0; i < properties.Count(); i++)
+            {
+                if (array[i] is DBNull)
+                {
+                    properties[i].GetSetMethod()?.Invoke(obj, new object[] { null });
+
+                }
+                else
+                {
+                    properties[i].GetSetMethod()?.Invoke(obj, new object[] { array[i] });
+                }
+            }
             return obj;
         }
         public T this[int rowIndex]
@@ -164,7 +178,6 @@ namespace SkyExcelHelper
             ICellStyle cellstyle = NPOIWorkBook.CreateCellStyle();
             cellstyle.VerticalAlignment = VerticalAlignment.Center;
             cellstyle.Alignment = HorizontalAlignment.Center;
-
             IRow DataTitle= NPOISheet.CreateRow(index);
             ICell DataTitleCell = DataTitle.CreateCell(0);
             DataTitleCell.SetCellValue(Name);
@@ -185,7 +198,8 @@ namespace SkyExcelHelper
                 int colIndex = 0;
                 IRow row= NPOISheet.CreateRow(++index);
                 CreateCell(row).ForEach((cell)=> {
-                    cell.SetCellValue(this[rowIndex,colIndex++].ToString());
+
+                    cell.SetCellValue(this[rowIndex,colIndex++]?.ToString()??"");
                 });
                 rowIndex++;
             }
@@ -204,6 +218,7 @@ namespace SkyExcelHelper
         {
             return RowDataEx;
         }
+        
         public ISheet ToISheet()
         {
             return NPOISheet;
@@ -225,9 +240,9 @@ namespace SkyExcelHelper
             List<PropertyInfo> properties= obj.GetType().GetProperties().ToList();
             properties[col].GetSetMethod()?.Invoke(obj,new object[] { newValue });
         }
-        private static int FindKeyIndex<T>()
+        public static int FindKeyIndex<T>()
         {
-            List<PropertyInfo> properties = typeof(T).GetType().GetProperties().ToList();
+            List<PropertyInfo> properties = typeof(T).GetProperties().ToList();
             for (int i = 0; i < properties.Count(); i++)
             {
                 bool ok = false;
@@ -240,6 +255,28 @@ namespace SkyExcelHelper
             }
             return -1;
         }
+        public static List<string> GetColTitle<T>(Action<ExPrimaryKeyAttribute,int> action = null)
+        {
+            List<string> colTitle = new List<string>();
+            List<PropertyInfo> properties = typeof(T).GetProperties().ToList();
+            int KeyIndex = 0;
+            properties.ForEach(p => {
+                ExColAttribute exCol = p.GetCustomAttribute<ExColAttribute>();
+                ExPrimaryKeyAttribute key = p.GetCustomAttribute<ExPrimaryKeyAttribute>();
+                if (exCol == null)
+                {
+                    colTitle.Add(p.Name);
+                }
+                else
+                {
+                    colTitle.Add(exCol.Name);
+                }
+                action?.Invoke(key,KeyIndex);
+                KeyIndex++;
+            });
+            return colTitle;
+        }
+         
 
     }
 }
